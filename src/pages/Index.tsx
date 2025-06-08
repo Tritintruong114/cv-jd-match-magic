@@ -25,35 +25,23 @@ const Index = () => {
   const [analysisResults, setAnalysisResults] = useState<AnalysisData | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [apiKey, setApiKey] = useState<string>('');
+  const [cvSummary, setCvSummary] = useState<string>('');
   const { toast } = useToast();
 
-  const analyzeWithOpenAI = async (cvContent: string, jdContent: string) => {
-    if (!apiKey.trim()) {
-      toast({
-        title: "API Key Required",
-        description: "Please enter your OpenAI API key to analyze",
-        variant: "destructive",
-      });
-      return null;
-    }
+  const summarizeCV = async (cvContent: string) => {
+    const prompt = `Please create a structured summary of this CV focusing on key information for job matching. Extract and organize:
 
-    const prompt = `Analyze this CV against the job description and return a JSON response with the following structure:
-{
-  "match_percentage": number (0-100),
-  "matched_keywords": ["keyword1", "keyword2", ...],
-  "missing_keywords": ["keyword3", "keyword4", ...],
-  "suggestions": ["suggestion1", "suggestion2", ...],
-  "strengths": ["strength1", "strength2", ...],
-  "jd_keywords_count": number
-}
+1. Skills (technical and soft skills)
+2. Experience level and years
+3. Education background
+4. Key achievements
+5. Industry experience
+6. Certifications
+
+Keep it concise but comprehensive. Format as structured text.
 
 CV Content:
-${cvContent}
-
-Job Description:
-${jdContent}
-
-Please provide practical, actionable suggestions for improving the CV match.`;
+${cvContent}`;
 
     try {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -63,15 +51,81 @@ Please provide practical, actionable suggestions for improving the CV match.`;
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'user',
               content: prompt
             }
           ],
-          temperature: 0.7,
-          max_tokens: 1000
+          temperature: 0.3,
+          max_tokens: 800
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to summarize CV');
+      }
+
+      const data = await response.json();
+      return data.choices[0].message.content;
+    } catch (error) {
+      console.error('CV Summarization Error:', error);
+      throw error;
+    }
+  };
+
+  const analyzeWithOpenAI = async (cvSummary: string, jdContent: string) => {
+    if (!apiKey.trim()) {
+      toast({
+        title: "API Key Required",
+        description: "Please enter your OpenAI API key to analyze",
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    const prompt = `Analyze this CV summary against the job description and return a JSON response with the following structure:
+{
+  "match_percentage": number (0-100),
+  "matched_keywords": ["keyword1", "keyword2", ...],
+  "missing_keywords": ["keyword3", "keyword4", ...],
+  "suggestions": ["suggestion1", "suggestion2", ...],
+  "strengths": ["strength1", "strength2", ...],
+  "jd_keywords_count": number
+}
+
+CV Summary (anonymized and condensed):
+${cvSummary}
+
+Job Description:
+${jdContent}
+
+Focus on:
+- Skills alignment
+- Experience relevance
+- Education match
+- Industry fit
+- Provide specific, actionable suggestions for improvement`;
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.5,
+          max_tokens: 1200
         })
       });
 
@@ -114,16 +168,36 @@ Please provide practical, actionable suggestions for improving the CV match.`;
     setIsAnalyzing(true);
     
     try {
-      const results = await analyzeWithOpenAI(cvText, jobDescription);
+      // Step 1: Summarize CV
+      toast({
+        title: "Processing CV",
+        description: "Creating structured summary of your CV...",
+      });
+      
+      const summary = await summarizeCV(cvText);
+      setCvSummary(summary);
+      
+      // Step 2: Analyze summary against JD
+      toast({
+        title: "Analyzing Match",
+        description: "Comparing CV summary with job requirements...",
+      });
+      
+      const results = await analyzeWithOpenAI(summary, jobDescription);
       if (results) {
         setAnalysisResults(results);
         toast({
-          title: "Analysis Complete",
-          description: `CV-JD match analysis completed successfully!`,
+          title: "Analysis Complete!",
+          description: `CV-JD match analysis completed with ${results.match_percentage}% match score`,
         });
       }
     } catch (error) {
       console.error('Analysis error:', error);
+      toast({
+        title: "Analysis Failed",
+        description: "Failed to complete CV analysis. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsAnalyzing(false);
     }
@@ -165,7 +239,7 @@ Please provide practical, actionable suggestions for improving the CV match.`;
               className="max-w-md"
             />
             <p className="text-sm text-gray-500">
-              Your API key is stored locally and used only for this analysis
+              Your CV will be summarized first, then only the summary is sent for analysis
             </p>
           </div>
         </div>
@@ -208,6 +282,19 @@ Please provide practical, actionable suggestions for improving the CV match.`;
             />
           </div>
         </div>
+
+        {/* CV Summary Display */}
+        {cvSummary && (
+          <div className="bg-white rounded-xl shadow-sm border p-6 mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">CV Summary</h3>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <pre className="text-sm text-gray-700 whitespace-pre-wrap">{cvSummary}</pre>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              This summary will be used for analysis instead of your full CV content
+            </p>
+          </div>
+        )}
 
         {/* Analyze Button */}
         <div className="text-center mb-8">
