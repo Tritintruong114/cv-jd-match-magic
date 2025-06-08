@@ -1,8 +1,11 @@
-
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set up the worker for PDF.js
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 interface FileUploadProps {
   onFileSelect: (file: File | null) => void;
@@ -15,35 +18,25 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, onTextExtr
   const [error, setError] = useState<string>('');
 
   const extractTextFromPDF = async (file: File): Promise<string> => {
-    // Simulate PDF text extraction - replace with actual PDF parsing library
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const mockText = `John Doe
-Software Engineer
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
 
-SKILLS:
-• React, JavaScript, TypeScript
-• HTML, CSS, Tailwind CSS
-• Frontend Development
-• Problem Solving
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(' ');
+        fullText += pageText + '\n';
+      }
 
-EXPERIENCE:
-Frontend Developer at Tech Company (2021-2024)
-- Developed user interfaces using React
-- Collaborated with design team
-- Optimized application performance
-
-EDUCATION:
-Bachelor of Computer Science
-University of Technology (2017-2021)
-
-PROJECTS:
-• E-commerce Website - Built with React and Node.js
-• Portfolio Website - Responsive design with modern UI
-• Task Management App - Full-stack application`;
-        resolve(mockText);
-      }, 1500);
-    });
+      return fullText.trim();
+    } catch (error) {
+      console.error('PDF extraction error:', error);
+      throw new Error('Failed to extract text from PDF. Please ensure the PDF is not password protected or corrupted.');
+    }
   };
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -62,9 +55,13 @@ PROJECTS:
 
     try {
       const extractedText = await extractTextFromPDF(file);
+      if (!extractedText || extractedText.trim().length === 0) {
+        throw new Error('No text could be extracted from the PDF. The file might be an image-only PDF.');
+      }
       onTextExtracted(extractedText);
     } catch (err) {
-      setError('Failed to extract text from PDF');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to extract text from PDF';
+      setError(errorMessage);
       console.error('PDF extraction error:', err);
     } finally {
       setIsProcessing(false);
@@ -130,7 +127,7 @@ PROJECTS:
               <Upload className="h-12 w-12 text-primary" />
             </div>
             <p className="text-primary font-medium">Processing PDF...</p>
-            <p className="text-sm text-gray-500">Extracting text content</p>
+            <p className="text-sm text-gray-500">Extracting text content from your CV</p>
           </div>
         ) : (
           <div className="space-y-3">
