@@ -4,8 +4,8 @@ import { Upload, FileText, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set up the worker for PDF.js
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Use a more reliable worker setup for PDF.js
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
 
 interface FileUploadProps {
   onFileSelect: (file: File | null) => void;
